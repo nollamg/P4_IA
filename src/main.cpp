@@ -10,12 +10,13 @@
 #include "task_anomalia.h"
 #include "task_display.h"
 #include "task_watchdog.h"
+#include "task_ai_analytics.h"
 
 void setup() {
     Serial.begin(115200);
     delay(2000);
 
-    Serial.println("\n[Main] Sistema FreeRTOS avanzado iniciado");
+    Serial.println("\n[Main] Sistema FreeRTOS avanzado con IA de análisis de consumo");
 
     // =========================
     // WIFI
@@ -35,21 +36,30 @@ void setup() {
     gQueueADC          = xQueueCreate(256, sizeof(AdcSample_t));
     gQueueDSP_Storage  = xQueueCreate(64, sizeof(DspResult_t));
     gQueueDSP_Anomalia = xQueueCreate(64, sizeof(DspResult_t));
+    gQueueDSP_AI       = xQueueCreate(32, sizeof(DspResult_t));   // NUEVA cola para IA
 
-    if (!gQueueADC || !gQueueDSP_Storage || !gQueueDSP_Anomalia) {
+    if (!gQueueADC || !gQueueDSP_Storage || !gQueueDSP_Anomalia || !gQueueDSP_AI) {
         Serial.println("[Main] ERROR creando colas");
-        while (true) vTaskDelay(1000);
+        while (true) vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
     // =========================
     // MUTEX
     // =========================
     gMutexInflux = xSemaphoreCreateMutex();
+    if (!gMutexInflux) {
+        Serial.println("[Main] ERROR creando mutex Influx");
+        while (true) vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 
     // =========================
     // EVENT GROUP
     // =========================
     gEventGroup = xEventGroupCreate();
+    if (!gEventGroup) {
+        Serial.println("[Main] ERROR creando EventGroup");
+        while (true) vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 
     // =========================
     // TIMERS
@@ -75,19 +85,88 @@ void setup() {
         }
     );
 
+    if (!gTimerInfluxTimeout || !gTimerAppWatchdog) {
+        Serial.println("[Main] ERROR creando timers");
+        while (true) vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+
     xTimerStart(gTimerAppWatchdog, 0);
 
     // =========================
     // TAREAS
     // =========================
 
-    xTaskCreatePinnedToCore(Task_ADC, "Task_ADC", 4096, nullptr, 4, &gTaskHandle_ADC, 1);
-    xTaskCreatePinnedToCore(Task_DSP, "Task_DSP", 8192, nullptr, 3, &gTaskHandle_DSP, 0);
+    // Muestreo ADC (crítica)
+    xTaskCreatePinnedToCore(
+        Task_ADC,
+        "Task_ADC",
+        4096,
+        nullptr,
+        4,
+        &gTaskHandle_ADC,
+        1
+    );
 
-    xTaskCreate(Task_Storage, "Task_Storage", 6144, nullptr, 2, &gTaskHandle_Storage);
-    xTaskCreate(Task_Anomalia, "Task_Anomalia", 4096, nullptr, 3, &gTaskHandle_Anomalia);
-    xTaskCreate(Task_Display, "Task_Display", 4096, nullptr, 1, &gTaskHandle_Display);
-    xTaskCreate(Task_Watchdog, "Task_Watchdog", 4096, nullptr, 1, &gTaskHandle_Watchdog);
+    // DSP
+    xTaskCreatePinnedToCore(
+        Task_DSP,
+        "Task_DSP",
+        8192,
+        nullptr,
+        3,
+        &gTaskHandle_DSP,
+        0
+    );
+
+    // Storage → InfluxDB
+    xTaskCreate(
+        Task_Storage,
+        "Task_Storage",
+        6144,
+        nullptr,
+        2,
+        &gTaskHandle_Storage
+    );
+
+    // Anomalías
+    xTaskCreate(
+        Task_Anomalia,
+        "Task_Anomalia",
+        4096,
+        nullptr,
+        3,
+        &gTaskHandle_Anomalia
+    );
+
+    // Display / dashboard
+    xTaskCreate(
+        Task_Display,
+        "Task_Display",
+        4096,
+        nullptr,
+        1,
+        &gTaskHandle_Display
+    );
+
+    // Watchdog
+    xTaskCreate(
+        Task_Watchdog,
+        "Task_Watchdog",
+        4096,
+        nullptr,
+        1,
+        &gTaskHandle_Watchdog
+    );
+
+    // IA de análisis (FFT, TFLite, predicción, recomendaciones)
+    xTaskCreate(
+        Task_AI_Analytics,
+        "Task_AI_Analytics",
+        8192,          // provisional, se ajusta con uxTaskGetStackHighWaterMark
+        nullptr,
+        2,             // misma prioridad que Storage, por no ser tiempo real duro
+        nullptr
+    );
 }
 
 void loop() {

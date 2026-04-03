@@ -34,6 +34,7 @@ extern DspResult_t gLastResult;
 extern QueueHandle_t gQueueADC;
 extern QueueHandle_t gQueueDSP_Storage;
 extern QueueHandle_t gQueueDSP_Anomalia;
+extern QueueHandle_t gQueueDSP_AI;
 
 // =========================
 // MUTEX

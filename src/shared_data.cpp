@@ -13,6 +13,7 @@ DspResult_t gLastResult = {0};
 QueueHandle_t gQueueADC          = nullptr;
 QueueHandle_t gQueueDSP_Storage  = nullptr;
 QueueHandle_t gQueueDSP_Anomalia = nullptr;
+QueueHandle_t gQueueDSP_AI = nullptr;
 
 // =========================
 // MUTEX
